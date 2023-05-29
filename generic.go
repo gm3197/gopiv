@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"errors"
+	"io"
 	"math/big"
 
 	"github.com/ebfe/scard"
@@ -30,6 +31,17 @@ const (
 	pivPutDataINS byte = 0xDB
 )
 
+var pkcs15HashPrefixes = map[crypto.Hash][]byte{
+	crypto.MD5:       {0x30, 0x20, 0x30, 0x0c, 0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x05, 0x05, 0x00, 0x04, 0x10},
+	crypto.SHA1:      {0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14},
+	crypto.SHA224:    {0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c},
+	crypto.SHA256:    {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20},
+	crypto.SHA384:    {0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30},
+	crypto.SHA512:    {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
+	crypto.MD5SHA1:   {},
+	crypto.RIPEMD160: {0x30, 0x20, 0x30, 0x08, 0x06, 0x06, 0x28, 0xcf, 0x06, 0x03, 0x00, 0x31, 0x04, 0x14},
+}
+
 type GenericPivCard struct {
 	sCard *scard.Card
 }
@@ -40,6 +52,10 @@ func (p *GenericPivCard) GetVersion() (string, error) {
 
 func (p *GenericPivCard) GetSerialNumber() (int32, error) {
 	return 0, errors.New("Not supported")
+}
+
+func (p *GenericPivCard) SetManagementKey(newManagementKey []byte) error {
+	return errors.New("Not supported")
 }
 
 func (p *GenericPivCard) GetCertificate(slot Slot) (*x509.Certificate, error) {
@@ -335,7 +351,7 @@ func (p *GenericPivCard) GeneratePrivateKey(key KeyReference, algorithm KeyAlgor
 		return nil, errors.New("Received invalid key from card")
 	}
 
-	return &pivCardSigner{
+	return &genericPivSigner{
 		sCard: p.sCard,
 		algorithm: algorithm,
 		key: key,
@@ -399,10 +415,98 @@ func (p *GenericPivCard) GetSigner(key KeyReference) (crypto.Signer, error) {
 		return nil, errors.New("Slot has unknown public key type")
 	}
 
-	return &pivCardSigner{
+	return &genericPivSigner{
 		sCard: p.sCard,
 		algorithm: algorithm,
 		key: key,
 		publicKey: publicKey,
 	}, nil
+}
+
+type genericPivSigner struct {
+	sCard *scard.Card
+	algorithm KeyAlgorithm
+	key KeyReference
+	publicKey crypto.PublicKey
+}
+
+func (s *genericPivSigner) Public() crypto.PublicKey {
+	return s.publicKey
+}
+
+func (s *genericPivSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	var processedDigest []byte
+	if ecKey, ok := s.publicKey.(*ecdsa.PublicKey); ok {
+		truncateBytes := (ecKey.Params().BitSize + 7) / 8
+		if len(digest) > truncateBytes {
+			processedDigest = digest[:truncateBytes]
+		} else {
+			processedDigest = digest
+		}
+	} else if rsaKey, ok := s.publicKey.(*rsa.PublicKey); ok {
+		hashFunc := opts.HashFunc()	
+		if hashFunc.Size() != len(digest) {
+			return nil, errors.New("Digest length doesn't match hash function")
+		}
+
+		if o, ok := opts.(*rsa.PSSOptions); ok {
+			salt, err := pssNewSalt(rand, rsaKey, hashFunc, o)
+			if err != nil {
+				return nil, err
+			}
+
+			encodedDigest, err := pssEMSAPSSEncode(digest, rsaKey, salt, hashFunc.New())
+			if err != nil {
+				return nil, err
+			}
+
+			processedDigest = encodedDigest
+		} else {
+			p, ok := pkcs15HashPrefixes[hashFunc]
+			if !ok {
+				return nil, errors.New("Unknown hash function")
+			}
+
+			prefixedDigest := append(p, digest...)
+
+			paddingLen := rsaKey.Size() - 3 - len(prefixedDigest)
+			if paddingLen < 0 {
+				return nil, errors.New("Message exceeds maximum length")
+			}
+
+			padding := make([]byte, paddingLen)
+			for i := range(padding) {
+				padding[i] = 0xFF
+			}
+
+			processedDigest = append(append([]byte{0x00, 0x01}, padding...), append([]byte{0x00}, prefixedDigest...)...)
+		}
+	}
+
+	digestReq := append([]byte{0x81}, append(getAsn1MultiByteLength(len(processedDigest)), processedDigest...)...)
+	reqReq := []byte{0x82, 0x00}
+	req := append([]byte{0x7C}, append(getAsn1MultiByteLength(len(digestReq) + len(reqReq)), append(reqReq, digestReq...)...)...)
+
+	res, err := sendApdu(s.sCard, isoInterindustryCla, pivGeneralAuthenticateINS, byte(s.algorithm), byte(s.key), req)	
+	if err != nil {
+		return nil, err
+	}
+
+	if !res.IsSuccess() {
+		return nil, res.Error()
+	}
+
+	var dynamicAuthTemplate asn1.RawValue
+	_, err = asn1.Unmarshal(res.data, &dynamicAuthTemplate)
+	if err != nil || dynamicAuthTemplate.Tag != 0x1c {
+		return nil, errors.New("Received invalid signature response from card")
+	}
+
+	var sig asn1.RawValue
+	_, err = asn1.Unmarshal(dynamicAuthTemplate.Bytes, &sig)
+	if err != nil || sig.Tag != 0x02 {
+		return nil, errors.New("Received invalid signature response from card")
+	}
+
+	return sig.Bytes, nil
 }

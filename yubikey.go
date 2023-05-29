@@ -3,12 +3,14 @@ package gopiv
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
 var (
 	yubikeyGetVersionINS byte = 0xFD
 	yubikeyGetSerialINS byte = 0xF8
+	yubikeySetManagementKeyINS byte = 0xFF
 )
 
 type Yubikey struct {
@@ -37,4 +39,21 @@ func (y *Yubikey) GetSerialNumber() (int32, error) {
 	}
 
 	return serial, nil
+}
+
+func (y *Yubikey) SetManagementKey(newManagementKey []byte) error {
+	if len(newManagementKey) != 24 {
+		return errors.New("3DES management keys must be 24 bytes")
+	}
+
+	res, err := sendApdu(y.sCard, isoInterindustryCla, yubikeySetManagementKeyINS, 0xFF, 0xFF, append([]byte{byte(ThreeDesKey), byte(ManagementKey), 24}, newManagementKey...))
+	if err != nil {
+		return err
+	}
+
+	if !res.IsSuccess() {
+		return res.Error()
+	}
+
+	return nil
 }

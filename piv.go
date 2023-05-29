@@ -59,6 +59,7 @@ type PivCard interface {
 	GeneratePrivateKey(key KeyReference, algorithm KeyAlgorithm) (crypto.Signer, error)
 	LoadCertificate(slot Slot, cert []byte) error
 	GetSigner(key KeyReference) (crypto.Signer, error)
+	SetManagementKey(newManagementKey []byte) error
 }
 
 func SetDebug(on bool) {
@@ -124,12 +125,12 @@ func sendApdu(card *scard.Card, cla, ins, p1, p2 byte, data []byte) (*apduRespon
 	if data != nil {
 		if len(data) + 6 > 255 {
 			chaining = true
-			apdu = append([]byte{cla | 0b00010000, ins, p1, p2, byte(249)}, append(data[0:249], 0x00)...)
+			apdu = append([]byte{cla | 0b00010000, ins, p1, p2, byte(249)}, data[0:249]...)
 		} else {
-			apdu = append([]byte{cla, ins, p1, p2, byte(len(data))}, append(data, 0x00)...)
+			apdu = append([]byte{cla, ins, p1, p2, byte(len(data))}, data...)
 		}
 	} else {
-		apdu = []byte{cla, ins, p1, p2, 0x00}
+		apdu = []byte{cla, ins, p1, p2}
 	}
 
 	if debug { log.Printf(">> %X\n", apdu) }
