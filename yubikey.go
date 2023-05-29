@@ -11,6 +11,9 @@ var (
 	yubikeyGetVersionINS byte = 0xFD
 	yubikeyGetSerialINS byte = 0xF8
 	yubikeySetManagementKeyINS byte = 0xFF
+
+	YkAttestationSlot Slot = []byte{0x5F, 0xFF, 0x01}
+	YkAttestationKey KeyReference = 0xF9
 )
 
 type Yubikey struct {
