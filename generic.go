@@ -55,8 +55,8 @@ func (p *GenericPivCard) GetVersion() (string, error) {
 	return "", errors.New("Not supported")
 }
 
-func (p *GenericPivCard) GetSerialNumber() (int32, error) {
-	return 0, errors.New("Not supported")
+func (p *GenericPivCard) GetSerialNumber() ([]byte, error) {
+	return nil, errors.New("Not supported")
 }
 
 func (p *GenericPivCard) GetUUID() ([]byte, error) {
