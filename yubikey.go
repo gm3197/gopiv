@@ -1,8 +1,6 @@
 package gopiv
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -25,23 +23,17 @@ func (y *Yubikey) GetVersion() (string, error) {
 	return fmt.Sprintf("%d.%d.%d", y.version[0], y.version[1], y.version[2]), nil
 }
 
-func (y *Yubikey) GetSerialNumber() (int32, error) {
+func (y *Yubikey) GetSerialNumber() ([]byte, error) {
 	res, err := sendApdu(y.sCard, isoInterindustryCla, yubikeyGetSerialINS, 0x00, 0x00, nil)
 	if err != nil {
-		return 0, err 
+		return nil, err 
 	}
 	
 	if !res.IsSuccess() {
-		return 0, res.Error()
+		return nil, res.Error()
 	}
 
-	var serial int32 
-	err = binary.Read(bytes.NewReader(res.data), binary.BigEndian, &serial)
-	if err != nil {
-		return 0, err
-	}
-
-	return serial, nil
+	return res.data, nil
 }
 
 func (y *Yubikey) SetManagementKey(newManagementKey []byte) error {

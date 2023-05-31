@@ -47,7 +47,7 @@ const (
 type PivCard interface {
 	GetApplicationLabel() string
 	GetVersion() (string, error)
-	GetSerialNumber() (int32, error)
+	GetSerialNumber() ([]byte, error)
 	GetCertificate(slot Slot) (*x509.Certificate, error)
 	GetUUID() ([]byte, error)
 	Authenticate(withKey KeyReference, value string) error
