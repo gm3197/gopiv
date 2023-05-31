@@ -59,6 +59,10 @@ func (p *GenericPivCard) GetSerialNumber() ([]byte, error) {
 	return nil, errors.New("Not supported")
 }
 
+func (p *GenericPivCard) ResetToDefaults() error {
+	return errors.New("Not supported")
+}
+
 func (p *GenericPivCard) GetUUID() ([]byte, error) {
 	res, err := sendApdu(p.sCard, isoInterindustryCla, pivGetDataINS, 0x3F, 0xFF, []byte{0x5C, 0x03, 0x5F, 0xC1, 0x07})
 	if err != nil {
@@ -117,7 +121,7 @@ func (p *GenericPivCard) GetCertificate(slot Slot) (*x509.Certificate, error) {
 	return x509.ParseCertificate(cert.Bytes)
 }
 
-func (p *GenericPivCard) Authenticate(withKey KeyReference, value string) error {
+func (p *GenericPivCard) Authenticate(withKey KeyReference, value string) (*KeyReferenceAuthenticationStatus, error) {
 	paddedPin := []byte(value)
 	for i := 0; i < 8 - len(value); i++ {
 		paddedPin = append(paddedPin, 0xFF)
@@ -125,14 +129,36 @@ func (p *GenericPivCard) Authenticate(withKey KeyReference, value string) error 
 
 	res, err := sendApdu(p.sCard, isoInterindustryCla, pivVerifyINS, 0x00, byte(withKey), paddedPin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if !res.IsSuccess() {
-		return res.Error()
+	if res.statusWord[0] == 0x63 && res.statusWord[1] >= 0xC0 && res.statusWord[1] <= 0xCF {
+		remainingAttempts := int(res.statusWord[1] - 0xC0)
+		return &KeyReferenceAuthenticationStatus{
+			Key: withKey,
+			Authenticated: false,
+			RemainingAttempts: &remainingAttempts,
+		}, nil
 	}
 
-	return nil
+	if bytes.Equal(res.statusWord, []byte{0x69, 0x83}) {
+		remainingAttempts := 0
+		return &KeyReferenceAuthenticationStatus{
+			Key: withKey,
+			Authenticated: false,
+			RemainingAttempts: &remainingAttempts,
+		}, nil
+	}
+
+	if res.IsSuccess() {
+		return &KeyReferenceAuthenticationStatus{
+			Key: withKey,
+			Authenticated: true,
+			RemainingAttempts: nil,
+		}, nil
+	}
+
+	return nil, res.Error()
 }
 
 type KeyReferenceAuthenticationStatus struct {
@@ -148,6 +174,15 @@ func (p *GenericPivCard) GetAuthenticationStatus(forKey KeyReference) (*KeyRefer
 
 	if res.statusWord[0] == 0x63 && res.statusWord[1] >= 0xC0 && res.statusWord[1] <= 0xCF {
 		remainingAttempts := int(res.statusWord[1] - 0xC0)
+		return &KeyReferenceAuthenticationStatus{
+			Key: forKey,
+			Authenticated: false,
+			RemainingAttempts: &remainingAttempts,
+		}, nil
+	}
+
+	if bytes.Equal(res.statusWord, []byte{0x69, 0x83}) {
+		remainingAttempts := 0
 		return &KeyReferenceAuthenticationStatus{
 			Key: forKey,
 			Authenticated: false,
@@ -202,7 +237,7 @@ func (p *GenericPivCard) ChangeAuthenticationData(key KeyReference, currentValue
 	return nil
 }
 
-func (p *GenericPivCard) UnblockPIN(puk, newPin string) error {
+func (p *GenericPivCard) UnblockPIN(puk, newPin string) (*KeyReferenceAuthenticationStatus, error) {
 	paddedPin := []byte(newPin)
 	for i := 0; i < 8 - len(newPin); i++ {
 		paddedPin = append(paddedPin, 0xFF)
@@ -210,14 +245,36 @@ func (p *GenericPivCard) UnblockPIN(puk, newPin string) error {
 
 	res, err := sendApdu(p.sCard, isoInterindustryCla, pivResetRetryCounterINS, 0x00, byte(CardholderPIN), append([]byte(puk), paddedPin...))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if !res.IsSuccess() {
-		return res.Error()
+	if res.statusWord[0] == 0x63 && res.statusWord[1] >= 0xC0 && res.statusWord[1] <= 0xCF {
+		remainingAttempts := int(res.statusWord[1] - 0xC0)
+		return &KeyReferenceAuthenticationStatus{
+			Key: PinUnblockingKey,
+			Authenticated: false,
+			RemainingAttempts: &remainingAttempts,
+		}, nil
 	}
 
-	return nil
+	if bytes.Equal(res.statusWord, []byte{0x69, 0x83}) {
+		remainingAttempts := 0
+		return &KeyReferenceAuthenticationStatus{
+			Key: PinUnblockingKey,
+			Authenticated: false,
+			RemainingAttempts: &remainingAttempts,
+		}, nil
+	}
+
+	if res.IsSuccess() {
+		return &KeyReferenceAuthenticationStatus{
+			Key: PinUnblockingKey,
+			Authenticated: true,
+			RemainingAttempts: nil,
+		}, nil
+	}
+
+	return nil, res.Error()
 }
 
 func (p *GenericPivCard) GetAdminAuthenticationWitness() ([]byte, error) {

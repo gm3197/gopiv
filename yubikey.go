@@ -3,6 +3,8 @@ package gopiv
 import (
 	"errors"
 	"fmt"
+	"math/rand"
+	"strconv"
 )
 
 var (
@@ -42,6 +44,45 @@ func (y *Yubikey) SetManagementKey(newManagementKey []byte) error {
 	}
 
 	res, err := sendApdu(y.sCard, isoInterindustryCla, yubikeySetManagementKeyINS, 0xFF, 0xFF, append([]byte{byte(ThreeDesKey), byte(ManagementKey), 24}, newManagementKey...))
+	if err != nil {
+		return err
+	}
+
+	if !res.IsSuccess() {
+		return res.Error()
+	}
+
+	return nil
+}
+
+func (y *Yubikey) ResetToDefaults() error {
+	y.DeAuthenticate(CardholderPIN)
+
+	pinRemainingAttempts := -1
+	for pinRemainingAttempts != 0 {
+		randomIncorrectPin := 10000000 + rand.Intn(99999999-10000000)
+		randomIncorrectPinStr := strconv.Itoa(randomIncorrectPin)
+
+		pinStatus, err := y.Authenticate(CardholderPIN, randomIncorrectPinStr)
+		if err != nil {
+			return err
+		}
+		pinRemainingAttempts = *pinStatus.RemainingAttempts
+	}
+
+	pukRemainingAttempts := -1
+	for pukRemainingAttempts != 0 {
+		randomIncorrectPin := 10000000 + rand.Intn(99999999-10000000)
+		randomIncorrectPinStr := strconv.Itoa(randomIncorrectPin)
+
+		pukStatus, err := y.UnblockPIN(randomIncorrectPinStr, "000000")
+		if err != nil {
+			return err
+		}
+		pukRemainingAttempts = *pukStatus.RemainingAttempts
+	}
+
+	res, err := sendApdu(y.sCard, isoInterindustryCla, 0xFB, 0x00, 0x00, nil)
 	if err != nil {
 		return err
 	}

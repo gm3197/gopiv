@@ -50,11 +50,11 @@ type PivCard interface {
 	GetSerialNumber() ([]byte, error)
 	GetCertificate(slot Slot) (*x509.Certificate, error)
 	GetUUID() ([]byte, error)
-	Authenticate(withKey KeyReference, value string) error
+	Authenticate(withKey KeyReference, value string) (*KeyReferenceAuthenticationStatus, error)
 	GetAuthenticationStatus(forKey KeyReference) (*KeyReferenceAuthenticationStatus, error)
 	DeAuthenticate(key KeyReference) error
 	ChangeAuthenticationData(key KeyReference, currentValue, newValue string) error
-	UnblockPIN(puk, newPin string) error
+	UnblockPIN(puk, newPin string) (*KeyReferenceAuthenticationStatus, error)
 	GetAdminAuthenticationWitness() ([]byte, error)
 	MutuallyAdminAuthenticateWithChallenge(decryptedWitness, challenge []byte) ([]byte, error)
 	AdminAuthenticate(managementKey []byte) error
@@ -62,6 +62,7 @@ type PivCard interface {
 	LoadCertificate(slot Slot, cert []byte) error
 	GetSigner(key KeyReference) (crypto.Signer, error)
 	SetManagementKey(newManagementKey []byte) error
+	ResetToDefaults() error
 }
 
 func SetDebug(on bool) {
