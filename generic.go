@@ -44,6 +44,11 @@ var pkcs15HashPrefixes = map[crypto.Hash][]byte{
 
 type GenericPivCard struct {
 	sCard *scard.Card
+	applicationLabel string
+}
+
+func (p *GenericPivCard) GetApplicationLabel() string {
+	return p.applicationLabel
 }
 
 func (p *GenericPivCard) GetVersion() (string, error) {
@@ -52,6 +57,37 @@ func (p *GenericPivCard) GetVersion() (string, error) {
 
 func (p *GenericPivCard) GetSerialNumber() (int32, error) {
 	return 0, errors.New("Not supported")
+}
+
+func (p *GenericPivCard) GetUUID() ([]byte, error) {
+	res, err := sendApdu(p.sCard, isoInterindustryCla, pivGetDataINS, 0x3F, 0xFF, []byte{0x5C, 0x03, 0x5F, 0xC1, 0x07})
+	if err != nil {
+		return nil, err
+	}
+
+	if !res.IsSuccess() {
+		return nil, res.Error()
+	}
+
+	var ccc asn1.RawValue
+	_, err = asn1.Unmarshal(res.data, &ccc)
+	if err != nil {
+		return nil, err
+	}
+	if ccc.Tag != 19 {
+		return nil, errors.New("Received malformed response from card")
+	}
+
+	var cardIdentifier asn1.RawValue
+	_, err = asn1.Unmarshal(ccc.Bytes, &cardIdentifier)
+	if err != nil {
+		return nil, err
+	}
+	if cardIdentifier.Tag != 16 {
+		return nil, errors.New("Received malformed response from card")
+	}
+
+	return cardIdentifier.Bytes, nil
 }
 
 func (p *GenericPivCard) SetManagementKey(newManagementKey []byte) error {

@@ -45,9 +45,11 @@ const (
 )
 
 type PivCard interface {
+	GetApplicationLabel() string
 	GetVersion() (string, error)
 	GetSerialNumber() (int32, error)
 	GetCertificate(slot Slot) (*x509.Certificate, error)
+	GetUUID() ([]byte, error)
 	Authenticate(withKey KeyReference, value string) error
 	GetAuthenticationStatus(forKey KeyReference) (*KeyReferenceAuthenticationStatus, error)
 	DeAuthenticate(key KeyReference) error
@@ -87,6 +89,26 @@ func GetPivCard(card *scard.Card) (PivCard, error) {
 
 	genericPiv := &GenericPivCard{
 		sCard: card,
+	}
+
+	var applicationPropertyTemplate asn1.RawValue
+	_, err = asn1.Unmarshal(res.data, &applicationPropertyTemplate)
+	if err != nil {
+		return nil, errors.New("Received malformed response from card")
+	}
+
+	rest := applicationPropertyTemplate.Bytes
+	for len(rest) > 0 {
+		var obj asn1.RawValue
+		r, err := asn1.Unmarshal(rest, &obj)
+		if err != nil {
+			return nil, errors.New("Received malformed response from card")
+		}
+		if obj.Tag == 16 {
+			genericPiv.applicationLabel = string(obj.Bytes)			
+			break
+		}
+		rest = r
 	}
 
 	/*
