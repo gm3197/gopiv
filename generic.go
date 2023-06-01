@@ -45,6 +45,7 @@ var pkcs15HashPrefixes = map[crypto.Hash][]byte{
 type GenericPivCard struct {
 	sCard *scard.Card
 	applicationLabel string
+	supportedAlgorithms []KeyAlgorithm
 }
 
 func (p *GenericPivCard) GetApplicationLabel() string {
@@ -61,6 +62,13 @@ func (p *GenericPivCard) GetSerialNumber() ([]byte, error) {
 
 func (p *GenericPivCard) ResetToDefaults() error {
 	return errors.New("Not supported")
+}
+
+func (p *GenericPivCard) GetSupportedAlgorithms() ([]KeyAlgorithm, error) {
+	if p.supportedAlgorithms == nil {
+		return nil, errors.New("Not supported")
+	}
+	return p.supportedAlgorithms, nil
 }
 
 func (p *GenericPivCard) GetUUID() ([]byte, error) {
@@ -384,7 +392,7 @@ func (p *GenericPivCard) GeneratePrivateKey(key KeyReference, algorithm KeyAlgor
 	}
 	
 	var publicKey crypto.PublicKey
-	if algorithm == RsaKey {
+	if algorithm == Rsa2048Key {
 		var modulus asn1.RawValue
 		rest, err := asn1.Unmarshal(obj.Bytes, &modulus)
 		if err != nil || modulus.Tag != 0x01 {
@@ -501,7 +509,7 @@ func (p *GenericPivCard) GetSigner(key KeyReference) (crypto.Signer, error) {
 			}
 		case *rsa.PublicKey:
 			publicKey = key
-			algorithm = RsaKey
+			algorithm = Rsa2048Key
 	}
 
 	if publicKey == nil {

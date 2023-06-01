@@ -38,16 +38,18 @@ const (
 	KeyManagementKey KeyReference = 0x9D
 	CardAuthenticationKey KeyReference = 0x9E
 
-	RsaKey KeyAlgorithm = 0x07
+	Rsa2048Key KeyAlgorithm = 0x07
 	EllipticP256 KeyAlgorithm = 0x11
 	EllipticP384 KeyAlgorithm = 0x14
 	ThreeDesKey KeyAlgorithm = 0x03
+	AesKey KeyAlgorithm = 0x0C
 )
 
 type PivCard interface {
 	GetApplicationLabel() string
 	GetVersion() (string, error)
 	GetSerialNumber() ([]byte, error)
+	GetSupportedAlgorithms() ([]KeyAlgorithm, error)
 	GetCertificate(slot Slot) (*x509.Certificate, error)
 	GetUUID() ([]byte, error)
 	Authenticate(withKey KeyReference, value string) (*KeyReferenceAuthenticationStatus, error)
@@ -90,6 +92,7 @@ func GetPivCard(card *scard.Card) (PivCard, error) {
 
 	genericPiv := &GenericPivCard{
 		sCard: card,
+		supportedAlgorithms: nil,
 	}
 
 	var applicationPropertyTemplate asn1.RawValue
@@ -107,7 +110,15 @@ func GetPivCard(card *scard.Card) (PivCard, error) {
 		}
 		if obj.Tag == 16 {
 			genericPiv.applicationLabel = string(obj.Bytes)			
-			break
+		}
+		if obj.Tag == 12 {
+			var supportedAlgo asn1.RawValue
+			_, err = asn1.Unmarshal(obj.Bytes, &supportedAlgo)
+			if err == nil {
+				if len(supportedAlgo.Bytes) == 1 {
+					genericPiv.supportedAlgorithms = append(genericPiv.supportedAlgorithms, KeyAlgorithm(supportedAlgo.Bytes[0]))
+				}			
+			}
 		}
 		rest = r
 	}
