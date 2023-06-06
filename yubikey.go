@@ -1,6 +1,8 @@
 package gopiv
 
 import (
+	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -11,6 +13,7 @@ var (
 	yubikeyGetVersionINS byte = 0xFD
 	yubikeyGetSerialINS byte = 0xF8
 	yubikeySetManagementKeyINS byte = 0xFF
+	yubikeyAttestINS byte = 0xF9
 
 	YkAttestationSlot Slot = []byte{0x5F, 0xFF, 0x01}
 	YkAttestationKey KeyReference = 0xF9
@@ -92,4 +95,29 @@ func (y *Yubikey) ResetToDefaults() error {
 	}
 
 	return nil
+}
+
+func (y *Yubikey) Attest(key KeyReference) (*x509.Certificate, error) {
+	res, err := sendApdu(y.sCard, isoInterindustryCla, yubikeyAttestINS, byte(key), 0x00, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if !res.IsSuccess() {
+		return nil, res.Error()
+	}
+
+	var certBytes []byte
+	if res.data[0] == 0x70 {
+		var cert asn1.RawValue
+		_, err = asn1.Unmarshal(res.data, &cert)
+		if err != nil {
+			return nil, err
+		}
+		certBytes = cert.Bytes
+	} else {
+		certBytes = res.data
+	}
+
+	return x509.ParseCertificate(certBytes)
 }

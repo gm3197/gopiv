@@ -60,6 +60,10 @@ func (p *GenericPivCard) GetSerialNumber() ([]byte, error) {
 	return nil, errors.New("Not supported")
 }
 
+func (p *GenericPivCard) Attest(key KeyReference) (*x509.Certificate, error) {
+	return nil, errors.New("Not supported")
+}
+
 func (p *GenericPivCard) ResetToDefaults() error {
 	return errors.New("Not supported")
 }

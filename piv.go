@@ -65,6 +65,7 @@ type PivCard interface {
 	GetSigner(key KeyReference) (crypto.Signer, error)
 	SetManagementKey(newManagementKey []byte) error
 	ResetToDefaults() error
+	Attest(key KeyReference) (*x509.Certificate, error)
 }
 
 func SetDebug(on bool) {
