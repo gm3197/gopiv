@@ -47,8 +47,6 @@ const (
 
 type PivCard interface {
 	GetApplicationLabel() string
-	GetVersion() (string, error)
-	GetSerialNumber() ([]byte, error)
 	GetSupportedAlgorithms() ([]KeyAlgorithm, error)
 	GetCertificate(slot Slot) (*x509.Certificate, error)
 	GetUUID() ([]byte, error)
@@ -63,9 +61,6 @@ type PivCard interface {
 	GeneratePrivateKey(key KeyReference, algorithm KeyAlgorithm) (crypto.Signer, error)
 	LoadCertificate(slot Slot, cert []byte) error
 	GetSigner(key KeyReference) (crypto.Signer, error)
-	SetManagementKey(newManagementKey []byte) error
-	ResetToDefaults() error
-	Attest(key KeyReference) (*x509.Certificate, error)
 }
 
 func SetDebug(on bool) {

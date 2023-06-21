@@ -52,22 +52,6 @@ func (p *GenericPivCard) GetApplicationLabel() string {
 	return p.applicationLabel
 }
 
-func (p *GenericPivCard) GetVersion() (string, error) {
-	return "", errors.New("Not supported")
-}
-
-func (p *GenericPivCard) GetSerialNumber() ([]byte, error) {
-	return nil, errors.New("Not supported")
-}
-
-func (p *GenericPivCard) Attest(key KeyReference) (*x509.Certificate, error) {
-	return nil, errors.New("Not supported")
-}
-
-func (p *GenericPivCard) ResetToDefaults() error {
-	return errors.New("Not supported")
-}
-
 func (p *GenericPivCard) GetSupportedAlgorithms() ([]KeyAlgorithm, error) {
 	if p.supportedAlgorithms == nil {
 		return nil, errors.New("Not supported")
@@ -104,10 +88,6 @@ func (p *GenericPivCard) GetUUID() ([]byte, error) {
 	}
 
 	return cardIdentifier.Bytes, nil
-}
-
-func (p *GenericPivCard) SetManagementKey(newManagementKey []byte) error {
-	return errors.New("Not supported")
 }
 
 func (p *GenericPivCard) GetCertificate(slot Slot) (*x509.Certificate, error) {
